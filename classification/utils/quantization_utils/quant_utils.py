@@ -23,6 +23,7 @@ import numpy as np
 from torch.autograd import Function, Variable
 import torch
 
+QUANTIZATION_WL = 8
 
 def clamp(input, min, max, inplace=False):
     """
@@ -104,6 +105,20 @@ def asymmetric_linear_quantization_params(num_bits,
     if signed:
         zero_point += 2**(num_bits - 1)
     return scale, zero_point
+
+def AsymmetricQuantHandler(x, channels):
+    x_transform = x.data.contiguous().view(channels, -1)
+    x_min = x_transform.min(dim=1).values
+    x_max = x_transform.max(dim=1).values
+    k = QUANTIZATION_WL
+
+    scale, zero_point = asymmetric_linear_quantization_params(k, x_min, x_max)
+    new_quant_x = linear_quantize(x, scale, zero_point, inplace=False)
+    n = 2**(k - 1)
+    new_quant_x = torch.clamp(new_quant_x, -n, n - 1)
+    quant_x = linear_dequantize(new_quant_x, scale, zero_point, inplace=False)
+
+    return quant_x
 
 
 class AsymmetricQuantFunction(Function):

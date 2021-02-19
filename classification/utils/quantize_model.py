@@ -22,8 +22,8 @@ import torch
 import torch.nn as nn
 import copy
 from .quantization_utils.quant_modules import *
-from pytorchcv.models.common import ConvBlock
-from pytorchcv.models.shufflenetv2 import ShuffleUnit, ShuffleInitBlock
+#from pytorchcv.models.common import ConvBlock
+#from pytorchcv.models.shufflenetv2 import ShuffleUnit, ShuffleInitBlock
 
 
 def quantize_model(model):
@@ -34,17 +34,19 @@ def quantize_model(model):
 
     # quantize convolutional and linear layers to 8-bit
     if type(model) == nn.Conv2d:
-        quant_mod = Quant_Conv2d(weight_bit=8)
+        quant_mod = Quant_Conv2d(weight_bit=QUANTIZATION_WL)
         quant_mod.set_param(model)
-        return quant_mod
+        #return quant_mod
+        return nn.Sequential(*[QuantAct(activation_bit=QUANTIZATION_WL), quant_mod])
     elif type(model) == nn.Linear:
-        quant_mod = Quant_Linear(weight_bit=8)
+        quant_mod = Quant_Linear(weight_bit=QUANTIZATION_WL)
         quant_mod.set_param(model)
-        return quant_mod
-
+        #return quant_mod
+        return nn.Sequential(*[QuantAct(activation_bit=QUANTIZATION_WL), quant_mod]) # the main reason of accuracy difference from the orginal code, quantize after adaptive avgpool in res18
     # quantize all the activation to 8-bit
     elif type(model) == nn.ReLU or type(model) == nn.ReLU6:
-        return nn.Sequential(*[model, QuantAct(activation_bit=8)])
+        #return nn.Sequential(*[model, QuantAct(activation_bit=QUANTIZATION_WL)])
+        return model
 
     # recursively use the quantized module to replace the single-precision module
     elif type(model) == nn.Sequential:

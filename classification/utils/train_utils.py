@@ -21,7 +21,7 @@
 import torch
 import os
 import torch.nn as nn
-from progress.bar import Bar
+#from progress.bar import Bar
 
 
 def test(model, test_loader):
@@ -58,6 +58,8 @@ def update(quantized_model, distilD):
         for batch_idx, inputs in enumerate(distilD):
             if isinstance(inputs, list):
                 inputs = inputs[0]
-            inputs = inputs.cuda()
+
+            if torch.cuda.is_available():
+                inputs = inputs.cuda()
             outputs = quantized_model(inputs)
     return quantized_model

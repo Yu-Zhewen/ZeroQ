@@ -74,7 +74,8 @@ def getDistilData(teacher_model,
     eps = 1e-6
     # initialize hooks and single-precision model
     hooks, hook_handles, bn_stats, refined_gaussian = [], [], [], []
-    teacher_model = teacher_model.cuda()
+    if torch.cuda.is_available():
+        teacher_model = teacher_model.cuda()
     teacher_model = teacher_model.eval()
 
     # get number of BatchNorm layers in the model
@@ -91,17 +92,25 @@ def getDistilData(teacher_model,
             hook_handles.append(m.register_forward_hook(hook.hook))
         if isinstance(m, nn.BatchNorm2d):
             # get the statistics in the BatchNorm layers
-            bn_stats.append(
-                (m.running_mean.detach().clone().flatten().cuda(),
-                 torch.sqrt(m.running_var +
-                            eps).detach().clone().flatten().cuda()))
+            if torch.cuda.is_available():
+                bn_stats.append(
+                    (m.running_mean.detach().clone().flatten().cuda(),
+                    torch.sqrt(m.running_var +
+                                eps).detach().clone().flatten().cuda()))
+            else:
+                bn_stats.append(
+                    (m.running_mean.detach().clone().flatten(),
+                    torch.sqrt(m.running_var +
+                                eps).detach().clone().flatten()))
+
     assert len(hooks) == len(bn_stats)
 
     for i, gaussian_data in enumerate(dataloader):
         if i == num_batch:
             break
         # initialize the criterion, optimizer, and scheduler
-        gaussian_data = gaussian_data.cuda()
+        if torch.cuda.is_available():
+            gaussian_data = gaussian_data.cuda()
         gaussian_data.requires_grad = True
         crit = nn.CrossEntropyLoss().cuda()
         optimizer = optim.Adam([gaussian_data], lr=0.5)
@@ -109,9 +118,12 @@ def getDistilData(teacher_model,
                                                          min_lr=1e-4,
                                                          verbose=False,
                                                          patience=100)
-
-        input_mean = torch.zeros(1, 3).cuda()
-        input_std = torch.ones(1, 3).cuda()
+        if torch.cuda.is_available():
+            input_mean = torch.zeros(1, 3).cuda()
+            input_std = torch.ones(1, 3).cuda()
+        else:
+            input_mean = torch.zeros(1, 3)
+            input_std = torch.ones(1, 3)
 
         for it in range(500):
             teacher_model.zero_grad()

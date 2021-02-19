@@ -162,7 +162,9 @@ class Quant_Conv2d(Module):
         """
         using quantized weights to forward activation x
         """
+        
         w = self.weight
+        '''
         x_transform = w.data.contiguous().view(self.out_channels, -1)
         w_min = x_transform.min(dim=1).values
         w_max = x_transform.max(dim=1).values
@@ -171,6 +173,7 @@ class Quant_Conv2d(Module):
                                      w_max)
         else:
             w = self.weight
+        '''
 
         return F.conv2d(x, w, self.bias, self.stride, self.padding,
                         self.dilation, self.groups)
