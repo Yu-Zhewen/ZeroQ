@@ -35,6 +35,7 @@ class QuantAct(Module):
     """
     def __init__(self,
                  activation_bit,
+                 quantization_method,
                  full_precision_flag=False,
                  running_stat=True):
         """
@@ -44,11 +45,14 @@ class QuantAct(Module):
         """
         super(QuantAct, self).__init__()
         self.activation_bit = activation_bit
+        self.quantization_method = quantization_method
         self.momentum = 0.99
         self.full_precision_flag = full_precision_flag
         self.running_stat = running_stat
         self.register_buffer('x_min', torch.zeros(1))
         self.register_buffer('x_max', torch.zeros(1))
+        self.register_buffer('scale', torch.ones(1))
+        self.register_buffer('zero_point', torch.zeros(1))
         self.act_function = AsymmetricQuantFunction.apply
 
     def __repr__(self):
@@ -61,6 +65,7 @@ class QuantAct(Module):
         """
         fix the activation range by setting running stat
         """
+        #print(self.x_min, self.x_max)
         self.running_stat = False
 
     def forward(self, x):
@@ -68,16 +73,37 @@ class QuantAct(Module):
         quantize given activation x
         """
         if self.running_stat:
-            x_min = x.data.min()
-            x_max = x.data.max()
-            # in-place operation used on multi-gpus
-            self.x_min += -self.x_min + min(self.x_min, x_min)
-            self.x_max += -self.x_max + max(self.x_max, x_max)
+            if self.quantization_method == 3:
+                x_min = x.data.min()
+                x_max = x.data.max()
+                # in-place operation used on multi-gpus
+                self.x_min += -self.x_min + min(self.x_min, x_min)
+                self.x_max += -self.x_max + max(self.x_max, x_max)
+
+            elif self.quantization_method in [1,2]:
+                self.x_min = torch.tensor(-54.7977)
+                self.x_max = torch.tensor(29.8541)
+                self.x_min = self.x_min.to(x.device)
+                self.x_max = self.x_max.to(x.device)
+
+            else:
+                assert False
+
+            self.scale, self.zero_point = asymmetric_linear_quantization_params(self.activation_bit, self.x_min, self.x_max)
 
         if not self.full_precision_flag:
-            quant_act = self.act_function(x, self.activation_bit, self.x_min,
-                                          self.x_max)
-            return quant_act
+            #quant_act = self.act_function(x, self.activation_bit, self.x_min,
+            #                              self.x_max)
+            new_quant_x = linear_quantize(x, self.scale, self.zero_point, inplace=False)
+            n = 2**(self.activation_bit - 1)
+            new_quant_x = torch.clamp(new_quant_x, -n, n - 1)
+            quant_x = linear_dequantize(new_quant_x,
+                                        self.scale,
+                                        self.zero_point,
+                                        inplace=False)
+            
+            
+            return quant_x
         else:
             return x
 

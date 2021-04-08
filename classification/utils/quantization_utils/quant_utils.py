@@ -23,8 +23,6 @@ import numpy as np
 from torch.autograd import Function, Variable
 import torch
 
-QUANTIZATION_WL = 8
-
 def clamp(input, min, max, inplace=False):
     """
     Clamp tensor input to (min, max).
@@ -106,11 +104,23 @@ def asymmetric_linear_quantization_params(num_bits,
         zero_point += 2**(num_bits - 1)
     return scale, zero_point
 
-def AsymmetricQuantHandler(x, channels):
-    x_transform = x.data.contiguous().view(channels, -1)
-    x_min = x_transform.min(dim=1).values
-    x_max = x_transform.max(dim=1).values
-    k = QUANTIZATION_WL
+def AsymmetricQuantHandler(x, channels, data_width, quantization_method):
+    if quantization_method == 3:
+        x_transform = x.data.contiguous().view(channels, -1)
+        x_min = x_transform.min(dim=1).values
+        x_max = x_transform.max(dim=1).values
+    
+    elif quantization_method in [1,2]:
+        #print(x_min, x_max)
+        x_min = torch.tensor([-1.6502])
+        x_max = torch.tensor([1.7411])
+        x_min = x_min.to(x.device)
+        x_max = x_max.to(x.device)
+    
+    else:
+        assert False
+
+    k = data_width
 
     scale, zero_point = asymmetric_linear_quantization_params(k, x_min, x_max)
     new_quant_x = linear_quantize(x, scale, zero_point, inplace=False)

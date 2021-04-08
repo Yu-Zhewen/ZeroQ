@@ -26,13 +26,14 @@ from .quantization_utils.quant_modules import *
 #from pytorchcv.models.shufflenetv2 import ShuffleUnit, ShuffleInitBlock
 
 
-def quantize_model(model):
+def quantize_model(model, data_width, quantization_method):
     """
     Recursively quantize a pretrained single-precision model to int8 quantized model
     model: pretrained single-precision model
     """
 
     # quantize convolutional and linear layers to 8-bit
+    '''
     if type(model) == nn.Conv2d:
         quant_mod = Quant_Conv2d(weight_bit=QUANTIZATION_WL)
         quant_mod.set_param(model)
@@ -47,19 +48,21 @@ def quantize_model(model):
     elif type(model) == nn.ReLU or type(model) == nn.ReLU6:
         #return nn.Sequential(*[model, QuantAct(activation_bit=QUANTIZATION_WL)])
         return model
-
+    '''
+    if type(model) in [nn.Conv2d, nn.ReLU, nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.Linear]:
+        return nn.Sequential(*[QuantAct(activation_bit=data_width,quantization_method=quantization_method), model, QuantAct(activation_bit=data_width,quantization_method=quantization_method)]) 
     # recursively use the quantized module to replace the single-precision module
     elif type(model) == nn.Sequential:
         mods = []
         for n, m in model.named_children():
-            mods.append(quantize_model(m))
+            mods.append(quantize_model(m, data_width, quantization_method))
         return nn.Sequential(*mods)
     else:
         q_model = copy.deepcopy(model)
         for attr in dir(model):
             mod = getattr(model, attr)
             if isinstance(mod, nn.Module) and 'norm' not in attr:
-                setattr(q_model, attr, quantize_model(mod))
+                setattr(q_model, attr, quantize_model(mod, data_width, quantization_method))
         return q_model
 
 
