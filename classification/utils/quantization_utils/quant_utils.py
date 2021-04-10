@@ -22,6 +22,8 @@ import math
 import numpy as np
 from torch.autograd import Function, Variable
 import torch
+import copy
+import torch.nn as nn
 
 def clamp(input, min, max, inplace=False):
     """
@@ -104,31 +106,47 @@ def asymmetric_linear_quantization_params(num_bits,
         zero_point += 2**(num_bits - 1)
     return scale, zero_point
 
-def AsymmetricQuantHandler(x, channels, data_width, quantization_method):
-    if quantization_method == 3:
-        x_transform = x.data.contiguous().view(channels, -1)
-        x_min = x_transform.min(dim=1).values
-        x_max = x_transform.max(dim=1).values
+class WeightQuantizer():
+    def __init__(self, model):
+        bFirst = True
+
+        for module in model.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                if bFirst:
+                    bFirst = False
+                    self.w_min = torch.min(module.weight)
+                    self.w_max = torch.max(module.weight)
+                else:
+                    self.w_min = torch.minimum(self.w_min, torch.min(module.weight))
+                    self.w_max = torch.maximum(self.w_max, torch.max(module.weight))
     
-    elif quantization_method in [1,2]:
-        #print(x_min, x_max)
-        x_min = torch.tensor([-1.6502])
-        x_max = torch.tensor([1.7411])
-        x_min = x_min.to(x.device)
-        x_max = x_max.to(x.device)
-    
-    else:
-        assert False
+        print("weight min:", self.w_min)
+        print("weight max:", self.w_max)
 
-    k = data_width
+    def AsymmetricQuantHandler(self, x, channels, data_width, quantization_method):
+        if quantization_method == 3:
+            x_transform = x.data.contiguous().view(channels, -1)
+            x_min = x_transform.min(dim=1).values
+            x_max = x_transform.max(dim=1).values
+        
+        elif quantization_method in [1,2]:
+            x_min = torch.tensor([self.w_min])
+            x_max = torch.tensor([self.w_max])
+            x_min = x_min.to(x.device)
+            x_max = x_max.to(x.device)
+        
+        else:
+            assert False
 
-    scale, zero_point = asymmetric_linear_quantization_params(k, x_min, x_max)
-    new_quant_x = linear_quantize(x, scale, zero_point, inplace=False)
-    n = 2**(k - 1)
-    new_quant_x = torch.clamp(new_quant_x, -n, n - 1)
-    quant_x = linear_dequantize(new_quant_x, scale, zero_point, inplace=False)
+        k = data_width
 
-    return quant_x
+        scale, zero_point = asymmetric_linear_quantization_params(k, x_min, x_max)
+        new_quant_x = linear_quantize(x, scale, zero_point, inplace=False)
+        n = 2**(k - 1)
+        new_quant_x = torch.clamp(new_quant_x, -n, n - 1)
+        quant_x = linear_dequantize(new_quant_x, scale, zero_point, inplace=False)
+
+        return quant_x
 
 
 class AsymmetricQuantFunction(Function):

@@ -68,30 +68,24 @@ class QuantAct(Module):
         #print(self.x_min, self.x_max)
         self.running_stat = False
 
+    def get_scale_shift(self):
+        self.scale, self.zero_point = asymmetric_linear_quantization_params(self.activation_bit, self.x_min, self.x_max)
+
     def forward(self, x):
         """
         quantize given activation x
         """
         if self.running_stat:
-            if self.quantization_method == 3:
-                x_min = x.data.min()
-                x_max = x.data.max()
-                # in-place operation used on multi-gpus
-                self.x_min += -self.x_min + min(self.x_min, x_min)
-                self.x_max += -self.x_max + max(self.x_max, x_max)
 
-            elif self.quantization_method in [1,2]:
-                self.x_min = torch.tensor(-54.7977)
-                self.x_max = torch.tensor(29.8541)
-                self.x_min = self.x_min.to(x.device)
-                self.x_max = self.x_max.to(x.device)
+            x_min = x.data.min()
+            x_max = x.data.max()
+            # in-place operation used on multi-gpus
+            self.x_min += -self.x_min + min(self.x_min, x_min)
+            self.x_max += -self.x_max + max(self.x_max, x_max) 
 
-            else:
-                assert False
+            return x           
 
-            self.scale, self.zero_point = asymmetric_linear_quantization_params(self.activation_bit, self.x_min, self.x_max)
-
-        if not self.full_precision_flag:
+        else:
             #quant_act = self.act_function(x, self.activation_bit, self.x_min,
             #                              self.x_max)
             new_quant_x = linear_quantize(x, self.scale, self.zero_point, inplace=False)
@@ -104,8 +98,6 @@ class QuantAct(Module):
             
             
             return quant_x
-        else:
-            return x
 
 
 class Quant_Linear(Module):
