@@ -124,7 +124,7 @@ class WeightQuantizer():
         print("weight max:", self.w_max)
 
     def AsymmetricQuantHandler(self, x, channels, data_width, quantization_method):
-        if quantization_method == 3:
+        if quantization_method in [3,4]:
             x_transform = x.data.contiguous().view(channels, -1)
             x_min = x_transform.min(dim=1).values
             x_max = x_transform.max(dim=1).values
